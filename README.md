@@ -975,12 +975,6 @@ test_process_img('test_images/test4.jpg')
 ![png](assets/output_49_0.png)
 
 
-
-```python
-
-```
-
-
 ```python
 white_output = 'project_video_out.mp4'
 clip1 = VideoFileClip("project_video.mp4")
@@ -1001,25 +995,7 @@ white_clip = clip1.fl_image(process_img)
     CPU times: user 8min 44s, sys: 47.9 s, total: 9min 32s
     Wall time: 5min 6s
 
-
-
-```python
-HTML("""
-<video width="960" height="540" controls>
-  <source src="{0}">
-</video>
-""".format(white_output))
-```
-
-
-
-
-
-<video width="960" height="540" controls>
-  <source src="project_video_out.mp4">
-</video>
-
-
+The video file can be found here [project_video_out.mp4](project_video_out.mp4)
 
 
 ## 9. The final code
@@ -1035,3 +1011,14 @@ The used classes in the final code are:
 Some other features were started, as a quicker version of the `find_lane_points`, using the previous second degree polynomial, but the results weren't satisfactory, and the final version doesn't use it. The function is called `fast_find_lane_points` and can be found in the `lanes.py` file.
 
 
+The code can be executed tested using the following command:
+
+```
+   python main.py test
+```
+
+This will execute the whole process for the test images. To launch the main process and generate a videofile, the following command can be used:
+
+```
+    python main.py main
+```
