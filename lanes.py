@@ -13,7 +13,7 @@ def curvature(fit_model, ploty):
   so the radius we are reporting is in pixel space,
   which is not the same as real world space.
   """
-  y_eval = np.max(ploty)
+  y_eval = np.max(ploty) / 2.
   radius = ((1 + (2 * fit_model[0] * y_eval + fit_model[1])**2)**1.5) / np.absolute(2 * fit_model[0])
   return radius
 
@@ -44,27 +44,44 @@ class Line():
     # polynomial coefficients averaged over the last n iterations
     self.best_fit = None
     # polynomial coefficients for the most recent fit
-    self.current_fit = [np.array([False])]
+    self.current_fit = None
     # radius of curvature of the line in some units
     self.radius_of_curvature = None
     # distance in meters of vehicle center from the line
     self.line_base_pos = None
     # difference in fit coefficients between last and new fits
-    self.diffs = np.array([0,0,0], dtype='float')
+    self.diffs_fit = np.array([0,0,0], dtype='float')
+    self.diff_curvature = None
     # x values for detected line pixels
     self.allx = None
     # y values for detected line pixels
     self.ally = None
 
   def set_lane(self, x, y, fit):
+    """
+    Function to define the lane, given the x and y points, and the
+    second order polynomial. With this data, the position and curvature
+    values are set. Finally, it calculates a mean of the last 5 polynomials
+
+    """
     self.allx = x
     self.ally = y
-    self.diffs = self.current_fit - fit
-    self.current_fit = fit
-    self.radius_of_curvature = curvature(self.current_fit, self.ally)
     self.line_base_pos = distance_to_center(self.allx[0])
+
+    if self.current_fit == None:
+      self.current_fit = fit
+      self.radius_of_curvature = curvature(fit, self.ally)
+
+    # Diff with previous values
+    self.diffs_fit = self.current_fit - fit
+    self.diff_curvature = np.absolute(self.radius_of_curvature - curvature(fit, self.ally))
+
+    # Update
     self.recent_xfitted.append(fit)
-    self.bestx = sum(self.recent_xfitted)/len(self.recent_xfitted)
+    self.bestx = sum(self.recent_xfitted) / len(self.recent_xfitted)
+    self.current_fit = fit
+    self.radius_of_curvature = curvature(self.bestx, self.ally)
+
 
   def get_x(self):
     return self.allx
@@ -92,6 +109,8 @@ class Lanes():
     self.frame_number = 0  # Frame counter (used for finding new lanes)
     self.left = Line()
     self.right = Line()
+    self.old_polygon = None
+    self.polygon_diff = 0
 
   def find_lane_points(self, binary_warped):
     # Assuming you have created a warped binary image called "binary_warped"
@@ -195,7 +214,7 @@ class Lanes():
 
   def cast_lane(self, img, Minv):
     """
-    cast the fitted line back to the original image
+    Cast the fitted line back to the original image
     """
     color_warp = np.zeros_like(img).astype(np.uint8)
 
@@ -210,7 +229,23 @@ class Lanes():
     pts = np.hstack((pts_left, pts_right))
 
     # Draw the lane onto the warped blank image
-    cv2.fillPoly(color_warp, np.int_([pts]), (0, 255, 0))
+    lane = np.int_([pts])
+    cv2.fillPoly(color_warp, lane, (0, 255, 0))
+
+    # cv2.matchShapes, compares two shapes and returns a similarly index,
+    # with 0 being identical shapes. We use this to make sure the
+    # polygon for the next frame is close to what it is expected to look
+    # like and if not we can elect to use old polygon instead.
+    new_polygon = lane[0]
+    if self.old_polygon != None:
+      self.polygon_diff = cv2.matchShapes(self.old_polygon, new_polygon, 1, 0.0)
+      if self.polygon_diff < 0.045:
+        # Use the new polygon points to write the next frame due to
+        # similarites of last sucessfully written polygon area
+        self.old_polygon = new_polygon
+    else:
+      self.old_polygon = new_polygon
+
 
     # Warp the blank back to original image space using inverse perspective matrix (Minv)
     newwarp = cv2.warpPerspective(color_warp, Minv, (img.shape[1], img.shape[0]))
@@ -221,57 +256,12 @@ class Lanes():
     return img_combined
 
 
-  def check_lane_points(self, leftx, lefty, left_fit, rightx, righty, right_fit):
-    """
-    Checking that they have similar curvature
-    Checking that they are separated by approximately the right distance horizontally
-    Checking that they are roughly parallel
-    """
-
-    left_curvature = curvature(left_fit, lefty)
-    right_curvature = curvature(right_fit, righty)
-
-    diff_left_curvature = np.absolute(left_curvature - self.left.get_curvature())
-    diff_right_curvature = np.absolute(right_curvature - self.right.get_curvature())
-
-    if diff_left_curvature < 1000:
-      self.left.set_lane(leftx, lefty, left_fit)
-
-    if diff_right_curvature < 1000:
-      self.right.set_lane(rightx, righty, right_fit)
-
-
   def find_and_draw(self, img, binary_warped, Minv):
 
     leftx, lefty, left_fit, rightx, righty, right_fit = self.find_lane_points(binary_warped)
 
-    if self.frame_number != 0:
-      self.check_lane_points(leftx, lefty, left_fit, rightx, righty, right_fit)
-    else:
-      self.left.set_lane(leftx, lefty, left_fit)
-
-      self.right.set_lane(rightx, righty, right_fit)
-
-    """
-    if self.frame_number == 0:
-      leftx, lefty, left_fit, rightx, righty, right_fit = self.find_lane_points(binary_warped)
-      # Let's assume the first frame is returning correct values
-      self.leftx = leftx
-      self.lefty = lefty
-      self.left_fit = left_fit
-      self.rightx = rightx
-      self.righty = righty
-      self.right_fit = right_fit
-      self.car_position = self.get_position(leftx[0], rightx[0])
-      self.left_curvature = curvature(left_fit, lefty)
-      self.right_curvature = curvature(right_fit, righty)
-    else:
-      leftx, lefty, left_fit, rightx, righty, right_fit = self.fast_find_lane_points(binary_warped)
-      # check if fast calculus is right, if not, recalculate and recheck again
-      if not self.check_lane_points(leftx, lefty, left_fit, rightx, righty, right_fit):
-        leftx, lefty, left_fit, rightx, righty, right_fit = self.find_lane_points(binary_warped)
-        self.check_lane_points(leftx, lefty, left_fit, rightx, righty, right_fit)
-    """
+    self.left.set_lane(leftx, lefty, left_fit)
+    self.right.set_lane(rightx, righty, right_fit)
 
     img_lane = self.cast_lane(img, Minv)
 
@@ -283,9 +273,6 @@ class Lanes():
     avg_curv = (self.left.get_curvature() + self.right.get_curvature()) / 2
     text = "Lane curvature: {} m".format(int(avg_curv))
     cv2.putText(img_lane, text, (250, 160), font, 1.2, (255, 255, 255), 2)
-
-    text = "{}, {}".format(int(self.left.get_curvature()), int(self.right.get_curvature()))
-    cv2.putText(img_lane, text, (250, 200), font, 1.2, (255, 255, 255), 2)
 
     # Update frame counter
     self.frame_number += 1

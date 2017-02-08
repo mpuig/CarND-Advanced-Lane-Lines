@@ -11,7 +11,7 @@ from lanes import Lanes
 from moviepy.editor import VideoFileClip
 import glob
 
-DUMP = True
+DUMP = False
 
 camera = Camera()
 lanes = Lanes()
@@ -26,10 +26,10 @@ def process_image(img):
     combined = lanes.find_and_draw(img, binary_warped, Minv=camera.Minv)
 
     if DUMP:
-        mpimg.imsave(base + "_0.jpg", img)
-        #mpimg.imsave(base + "_1_undist.jpg", undist)
-        #mpimg.imsave(base + "_2_warped.jpg", warped)
-        #mpimg.imsave(base + "_3_binary_warped.jpg", binary_warped)
+        # mpimg.imsave(base + "_0.jpg", img)
+        # mpimg.imsave(base + "_1_undist.jpg", undist)
+        # mpimg.imsave(base + "_2_warped.jpg", warped)
+        # mpimg.imsave(base + "_3_binary_warped.jpg", binary_warped)
         mpimg.imsave(base + "_4_combined.jpg", combined)
 
     return combined
@@ -37,8 +37,9 @@ def process_image(img):
 
 def main():
     print("Running main...")
+    # clip = VideoFileClip("./project_video.mp4").subclip(20,35)
     clip = VideoFileClip("./project_video.mp4")
-    output_video = "./project_video_processed4.mp4"
+    output_video = "./project_video_out2.mp4"
     output_clip = clip.fl_image(process_image)
     output_clip.write_videofile(output_video, audio=False)
 
