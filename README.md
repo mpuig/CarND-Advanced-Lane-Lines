@@ -1002,15 +1002,6 @@ The video file can be found here [project_video_out.mp4](project_video_out.mp4)
 
 As I said in the beginning of this document, this were the steps to test each step, find good values for necessary parameters, and double check everything. After that, a new code was written, using OOP classes, and some extra features like smoothing the detection using the information from previous frames.
 
-The used classes in the final code are:
-
-- `Camera`: This is the class used to perform the calibration, undistortion and thresholding processes to each image.
-- `Lanes`: This class is used to detect the lanes when a warped binary image is given.
-- `Line`: This is used for the `left` and `right` lane in the `Lanes` class, and calculates the curvature, the position and accumulates the information from the previous frames.
-
-Some other features were started, as a quicker version of the `find_lane_points`, using the previous second degree polynomial, but the results weren't satisfactory, and the final version doesn't use it. The function is called `fast_find_lane_points` and can be found in the `lanes.py` file.
-
-
 The code can be executed tested using the following command:
 
 ```
@@ -1022,3 +1013,69 @@ This will execute the whole process for the test images. To launch the main proc
 ```
     python main.py main
 ```
+
+### Structure and notes
+
+The used classes in the final code are:
+
+- `Camera`: This is the class used to perform the calibration, undistortion and thresholding processes to each image.
+- `Lanes`: This class is used to detect the lanes when a warped binary image is given.
+- `Line`: This is used for the `left` and `right` lane in the `Lanes` class, and calculates the curvature, the position and accumulates the information from the previous frames.
+
+To smooth the polygon detection, I've used two approaches. The firts one, in the `Lanes` class, before to draw the new polygon, I use cv2.matchShapes to compare it with the previous one. If it's close, then I apply it.
+
+```
+    if self.old_polygon != None:
+      self.polygon_diff = cv2.matchShapes(self.old_polygon, new_polygon, 1, 0.0)
+      if self.polygon_diff < 0.045:
+        # Use the new polygon points to write the next frame due to
+        # similarites of last sucessfully written polygon area
+        self.old_polygon = new_polygon
+    else:
+      self.old_polygon = new_polygon
+```
+
+The second used method is to smooth the detected lanes. This is done in the `Line` class, when a lane is defined using the `set_lane(x,y,fit)` method. We have a class variable called `recent_xfitted` which is a queue with a lenght of 5.
+
+```
+  def __init__(self):
+    ...
+    self.recent_xfitted = deque(maxlen=5)
+    ...
+```
+
+Then, when a new lane is defined, the queue is used to calculate a mean of the last 5 lines, and a mean is calculated and stored into `bestx` variable:
+
+```
+  def set_lane(self, x, y, fit):
+    """
+    Function to define the lane, given the x and y points, and the
+    second order polynomial. With this data, the position and curvature
+    values are set. Finally, it calculates a mean of the last 5 polynomials
+    """
+    self.allx = x
+    self.ally = y
+    self.line_base_pos = distance_to_center(self.allx[0])
+
+    if self.current_fit == None:
+      self.current_fit = fit
+      self.radius_of_curvature = curvature(fit, self.ally)
+
+    # Diff with previous values
+    self.diffs_fit = self.current_fit - fit
+    self.diff_curvature = np.absolute(self.radius_of_curvature - curvature(fit, self.ally))
+
+    # Update
+    self.recent_xfitted.append(fit)
+    self.bestx = sum(self.recent_xfitted) / len(self.recent_xfitted)
+    self.current_fit = fit
+    self.radius_of_curvature = curvature(self.bestx, self.ally)
+```
+
+The result of the `python main.py main` command is [this video](project_video_out2.mp4).
+
+### Discussion
+
+Some other features were started, as a quicker version of the `find_lane_points`, using the previous second degree polynomial, but the results weren't satisfactory, and the final version doesn't use it. The function is called `fast_find_lane_points` and can be found in the `lanes.py` file.
+
+Another improvement is around thresholds, and extending the color detection using more channels.
